@@ -1,278 +1,178 @@
+Here is an updated, professional-grade `README.md` file that reflects the finalized architecture, the correct folder structure, and the exact step-by-step run instructions to ensure anyone viewing your GitHub repository can get the project running smoothly.
+
+Copy this text and replace the contents of your current `README.md` file.
+
+```markdown
 # 🛡️ Intelligent Financial Fraud Detection System
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green.svg)](https://fastapi.tiangolo.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.35-red.svg)](https://streamlit.io)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://postgresql.org)
-[![Redis](https://img.shields.io/badge/Redis-7.2-red.svg)](https://redis.io)
-[![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://docs.docker.com/compose/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+An enterprise-grade, real-time fraud detection platform combining asynchronous Machine Learning inference, a PostgreSQL transactional ledger, Redis feature caching, and a live Streamlit dashboard. 
 
-An **enterprise-grade, real-time fraud detection platform** combining asynchronous ML inference, a PostgreSQL transactional ledger, Redis feature caching, and a live Streamlit dashboard — all orchestrated via Docker Compose.
-
----
-
-## 📸 Screenshots
-
-| Customer Terminal | Admin Live Monitor |
-|---|---|
-| ![Terminal](docs/screenshots/terminal.png) | ![Dashboard](docs/screenshots/dashboard.png) |
-
----
-
-## 🏗️ Architecture
-
-```
-[ Streamlit UI ] ──(HTTP)──> [ FastAPI Backend ]
-                                   │          │
-               ┌───────────────────┘          └──────────────────────┐
-      (Instant Write)                                    (Async Risk Eval)
-               ▼                                                      ▼
-  ┌─────────────────────┐                           ┌──────────────────────────┐
-  │    PostgreSQL        │                           │     ML Engine            │
-  │  (Core Ledger DB)   │                           │  Isolation Forest + XGB  │
-  │                     │                           │                          │
-  │  • SQL Triggers     │                           │  • Reads Redis context   │
-  │  • Audit Logs       │                           │  • Computes risk score   │
-  │  • Partitioning     │                           └──────────┬───────────────┘
-  └─────────────────────┘                                      │
-                                          (If Fraud → Update DB + Alert UI)
-                                          (Status → 'Awaiting Verification')
-```
+This project demonstrates a production-ready architecture where hard database constraints and predictive AI work together to process and secure financial transactions in real time.
 
 ---
 
 ## ✨ Key Features
 
-- **Real-Time Transaction Processing** — FastAPI async backend handles concurrent submissions without blocking
-- **Dual-Layer Fraud Detection:**
-  - 🔴 **Database Triggers** — Hard business rules (suspended accounts, daily limits) via PostgreSQL
-  - 🟠 **ML Inference** — Isolation Forest anomaly detection + XGBoost classifier running asynchronously
-- **Redis Feature Store** — Sub-millisecond lookups for behavioral features (velocity, geo-distance, transaction frequency)
-- **Step-Up MFA Simulation** — OTP verification flow triggered automatically on fraud flags
-- **Live Admin Dashboard** — Streamlit dashboard with real-time metrics, charts, and ledger table
-- **Full Audit Trail** — Every state change logged with timestamps in PostgreSQL
+* **Real-Time Transaction Processing:** FastAPI asynchronous backend handles concurrent payloads without blocking.
+* **Dual-Layer Fraud Detection:**
+  * 🔴 **Database Triggers:** Hard business rules (e.g., daily transaction limits, suspended accounts) enforced instantly via PostgreSQL.
+  * 🟠 **ML Inference:** Isolation Forest (anomaly detection) + XGBoost classifier running asynchronously.
+* **Ultra-Fast Feature Store:** Redis caches behavioral context (velocity, geographic distance, 10-minute transaction counts) for sub-millisecond lookups.
+* **Step-Up MFA Simulation:** Automated UI flow that halts suspicious transactions and demands One-Time Password (OTP) verification.
+* **Live Admin Dashboard:** Streamlit UI polling real-time system metrics, ML flags, and database writes.
+
+---
+
+## 🏗️ System Architecture
+
+```text
+[ Streamlit UI ] ──(HTTP)──> [ FastAPI Backend ]
+                               │          │
+               ┌───────────────┘          └──────────────────────┐
+      (Instant Write)                                  (Async Risk Eval)
+               ▼                                                 ▼
+  ┌─────────────────────┐                          ┌──────────────────────────┐
+  │     PostgreSQL      │                          │        ML Engine         │
+  │  (Core Ledger DB)   │                          │  Isolation Forest + XGB  │
+  │                     │                          │                          │
+  │ • SQL Triggers      │                          │ • Reads Redis context    │
+  │ • Audit Logs        │                          │ • Computes risk score    │
+  │ • Partitioning      │                          └──────────┬───────────────┘
+  └─────────────────────┘                                     │
+                                         (If Fraud → Update DB + Alert UI)
+                                         (Status → 'Awaiting Verification')
+
+```
 
 ---
 
 ## 🛠️ Tech Stack
 
 | Layer | Technology | Purpose |
-|---|---|---|
-| **Frontend / Dashboard** | Streamlit | Interactive UI, real-time polling, charting |
-| **Backend API** | FastAPI (async) | REST endpoints, background task queue |
-| **Core Database** | PostgreSQL 16 | ACID ledger, triggers, partitioning |
-| **Cache / Feature Store** | Redis 7 | Behavioral context, velocity checks |
-| **ML Engine** | Scikit-learn, XGBoost | Isolation Forest + supervised classifier |
-| **Containerization** | Docker Compose | One-command deployment of all services |
-| **Model Interpretability** | SHAP | Feature attribution and explanation |
+| --- | --- | --- |
+| **Frontend / Dashboard** | Streamlit (v1.34.0) | Interactive UI, real-time polling, analytics charting |
+| **Backend API** | FastAPI (Async) | REST endpoints, background task queues |
+| **Core Database** | PostgreSQL 16 | ACID ledger, trigger enforcement, table partitioning |
+| **Cache / Feature Store** | Redis 7 | Behavioral context, velocity tracking |
+| **ML Engine** | Scikit-learn, XGBoost | Anomaly detection + Supervised classification |
 
 ---
 
-## 📁 Project Structure
+## 📁 Repository Structure
 
-```
+```text
 fraud-detection-system/
 │
-├── backend/                        # FastAPI application
+├── backend/                    # FastAPI application & ML Engine
 │   ├── app/
-│   │   ├── api/                    # Route handlers
-│   │   │   ├── transactions.py     # Transaction endpoints
-│   │   │   └── admin.py            # Admin/monitoring endpoints
-│   │   ├── models/                 # Pydantic schemas + DB models
-│   │   │   ├── schemas.py
-│   │   │   └── database.py
-│   │   ├── services/               # Business logic
-│   │   │   ├── fraud_service.py    # ML inference + Redis
-│   │   │   └── ledger_service.py   # DB operations
-│   │   ├── ml/                     # ML model training & artifacts
-│   │   │   ├── train.py
-│   │   │   ├── predict.py
-│   │   │   └── models/             # Saved .pkl model files
-│   │   └── main.py                 # FastAPI app entry point
-│   ├── tests/
-│   │   ├── test_transactions.py
-│   │   └── test_ml.py
-│   └── requirements.txt
+│   │   ├── api/                # Route handlers (transactions, admin)
+│   │   ├── models/             # Database ORMs & Pydantic schemas
+│   │   ├── services/           # Business logic (Ledger & Fraud services)
+│   │   ├── ml/                 # ML training scripts and predict wrapper
+│   │   │   └── models/         # Compiled .pkl artifacts (generated dynamically)
+│   │   └── main.py             # FastAPI entry point
+│   ├── Dockerfile
+│   └── requirements.txt        
 │
-├── streamlit_app/                  # Streamlit dashboard
-│   ├── app.py                      # Main Streamlit app
-│   └── requirements.txt
+├── streamlit_app/              # Streamlit dashboard
+│   ├── app.py                  
+│   ├── Dockerfile
+│   └── requirements.txt        
 │
-├── ml_pipeline/                    # Standalone ML training pipeline
-│   ├── notebooks/
-│   │   ├── 01_EDA.ipynb            # Exploratory Data Analysis
-│   │   ├── 02_Feature_Engineering.ipynb
-│   │   └── 03_Model_Training.ipynb
-│   └── data/                       # Place your dataset here
-│       └── .gitkeep
+├── docker/                     # Database configurations
+│   ├── init.sql                # Postgres schema and triggers
+│   └── redis.conf              
 │
-├── docker/
-│   ├── init.sql                    # PostgreSQL schema + triggers
-│   └── redis.conf
-│
-├── docs/
-│   ├── API.md                      # API reference
-│   └── screenshots/
-│
-├── .github/
-│   └── workflows/
-│       └── ci.yml                  # GitHub Actions CI pipeline
-│
-├── docker-compose.yml
-├── .env.example
-├── .gitignore
+├── docker-compose.yml          # Orchestration for DB and Cache
+├── .env                        # Environment variables
+├── .gitignore                  
 └── README.md
+
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start Guide
 
 ### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose)
-- Git
+
+* Docker Desktop
+* Python 3.11+
+* Git
 
 ### 1. Clone the repository
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/fraud-detection-system.git
+git clone [https://github.com/YOUR_USERNAME/fraud-detection-system.git](https://github.com/YOUR_USERNAME/fraud-detection-system.git)
 cd fraud-detection-system
+
 ```
 
-### 2. Configure environment
+### 2. Start the Databases (Docker)
+
+Spin up PostgreSQL and Redis in the background:
+
 ```bash
-cp .env.example .env
-# Edit .env if needed (defaults work out of the box)
+docker-compose up -d postgres redis
+
 ```
 
-### 3. Launch all services
-```bash
-docker-compose up --build
-```
+### 3. Setup the Backend & Train the ML Models
 
-This starts:
-| Service | URL |
-|---|---|
-| Streamlit Dashboard | http://localhost:8501 |
-| FastAPI Backend | http://localhost:8000 |
-| FastAPI Docs (Swagger) | http://localhost:8000/docs |
-| PostgreSQL | localhost:5432 |
-| Redis | localhost:6379 |
+Open a terminal, navigate to the backend, install dependencies, and run the training script to generate the AI model weights (`.pkl` files):
 
-### 4. (Optional) Train the ML model locally
 ```bash
 cd backend
+python -m venv env
+source env/bin/activate  # On Windows use `env\Scripts\activate`
 pip install -r requirements.txt
 python app/ml/train.py
+
 ```
 
----
-
-## 🔌 API Reference
-
-### Submit a Transaction
-```http
-POST /transaction/submit
-Content-Type: application/json
-
-{
-  "account_id": "ACC10294",
-  "amount": 5000.00,
-  "lat": 19.0760,
-  "lon": 72.8777
-}
-```
-
-**Response:**
-```json
-{
-  "transaction_id": "txn_8f3a...",
-  "status": "Awaiting Verification",
-  "risk_score": 0.87,
-  "message": "Suspicious activity flagged by ML engine"
-}
-```
-
-### Verify OTP (Step-Up MFA)
-```http
-PATCH /transaction/{transaction_id}/verify
-Content-Type: application/json
-
-{ "otp": "123456" }
-```
-
-### Admin — Get Ledger Summary
-```http
-GET /admin/ledger-summary
-```
-
-Full API docs available at `/docs` (Swagger UI) when running.
-
----
-
-## 🧠 ML Models
-
-### 1. Isolation Forest (Unsupervised)
-- Detects anomalies without labeled data
-- Trained on: `amount`, `geo_velocity`, `tx_count_10m`, `hour_of_day`, `weekend_flag`
-- Threshold tuned for top 1% anomaly flagging
-
-### 2. XGBoost Classifier (Supervised)
-- Trained on labeled fraud data (Kaggle Credit Card Dataset)
-- SMOTE applied to handle class imbalance (~0.17% fraud rate)
-- SHAP used for feature attribution and model explainability
-
-### Feature Engineering
-| Feature | Description |
-|---|---|
-| `geo_velocity` | Distance (km) between current & last transaction location |
-| `time_since_last_tx` | Seconds elapsed since last transaction |
-| `tx_count_10m` | Transactions in the last 10 minutes (from Redis) |
-| `amount_z_score` | Z-score of amount vs. account history |
-| `hour_of_day` | Hour of transaction (0–23) |
-| `is_weekend` | Binary flag for weekends |
-
----
-
-## 🗄️ Database Schema
-
-The core `transactions` table is **range-partitioned by month** for performance at scale:
-
-```sql
-CREATE TABLE transactions (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    account_id    VARCHAR(20) NOT NULL,
-    amount        NUMERIC(12, 2) NOT NULL,
-    status        VARCHAR(30) DEFAULT 'Pending',
-    is_fraudulent BOOLEAN DEFAULT FALSE,
-    risk_score    FLOAT,
-    latitude      FLOAT,
-    longitude     FLOAT,
-    created_at    TIMESTAMPTZ DEFAULT NOW()
-) PARTITION BY RANGE (created_at);
-```
-
-A **PostgreSQL trigger** enforces hard business rules before every insert — no application-level bypass possible.
-
----
-
-## 📊 Model Performance
-
-| Metric | Isolation Forest | XGBoost |
-|---|---|---|
-| ROC-AUC | — | **0.974** |
-| Fraud Recall | — | **0.91** |
-| Precision | — | 0.87 |
-| False Positive Rate | ~1% | ~2% |
-
----
-
-## 🧪 Running Tests
+Start the FastAPI Server:
 
 ```bash
-cd backend
-pytest tests/ -v
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
 ```
+
+*(The API documentation will be available at `http://localhost:8000/docs`)*
+
+### 4. Launch the Streamlit Dashboard
+
+Open a **new** terminal tab, leave the backend running, and start the frontend:
+
+```bash
+cd streamlit_app
+python -m venv env
+source env/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+
+```
+
+*(The dashboard will automatically open at `http://localhost:8501`)*
+
+---
+
+## 🧠 Machine Learning Details
+
+**1. Isolation Forest (Unsupervised)**
+
+* Detects spatial and temporal anomalies without labeled data.
+* Tuned for top 1.7% anomaly flagging based on transaction velocity.
+
+**2. XGBoost Classifier (Supervised)**
+
+* Trained on historical fraud data.
+* Utilizes a combination of base parameters (amount) and engineered behavioral features (z-scores, time since last transaction).
+
+**Engineered Features:**
+
+* `geo_velocity`: Distance between current and last transaction location.
+* `tx_count_10m`: Transactions attempted in the last 10 minutes.
+* `amount_z_score`: Standardized deviation from the account's historical average.
 
 ---
 
@@ -283,15 +183,6 @@ pytest tests/ -v
 3. Commit your changes: `git commit -m 'Add your feature'`
 4. Push and open a Pull Request
 
----
+```
 
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgements
-
-- [Kaggle Credit Card Fraud Detection Dataset](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) — ULB Machine Learning Group
-- Architecture inspired by production patterns at major fintech institutions
+```
