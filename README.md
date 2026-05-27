@@ -112,6 +112,14 @@ cp .env.example .env
 
 # 3. Start everything
 docker-compose up --build
+
+#4. To see backend in your terminal 
+cd fraudguard
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+#5. Run the dashboard 
+cd fraudguard/streamlit_app
+streamlit run app.py
 ```
 
 Services after startup:
@@ -121,8 +129,8 @@ Services after startup:
 | Streamlit dashboard | http://localhost:8501         |
 | FastAPI backend     | http://localhost:8000         |
 | Swagger docs        | http://localhost:8000/docs    |
-| PostgreSQL          | localhost:5432                |
-| Redis               | localhost:6379                |
+| PostgreSQL          | http://localhost:5432         |
+| Redis               | http://localhost:6379         |
 
 ---
 
