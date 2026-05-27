@@ -43,18 +43,18 @@ CREATE TABLE IF NOT EXISTS transactions (
     PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);
 
--- Create monthly partitions (current month + next 3)
-CREATE TABLE IF NOT EXISTS transactions_2025_05 PARTITION OF transactions
-    FOR VALUES FROM ('2025-05-01') TO ('2025-06-01');
+-- Create monthly partitions (Updated for current 2026 dates)
+CREATE TABLE IF NOT EXISTS transactions_2026_05 PARTITION OF transactions
+    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
 
-CREATE TABLE IF NOT EXISTS transactions_2025_06 PARTITION OF transactions
-    FOR VALUES FROM ('2025-06-01') TO ('2025-07-01');
+CREATE TABLE IF NOT EXISTS transactions_2026_06 PARTITION OF transactions
+    FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
 
-CREATE TABLE IF NOT EXISTS transactions_2025_07 PARTITION OF transactions
-    FOR VALUES FROM ('2025-07-01') TO ('2025-08-01');
+CREATE TABLE IF NOT EXISTS transactions_2026_07 PARTITION OF transactions
+    FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
 
-CREATE TABLE IF NOT EXISTS transactions_2025_08 PARTITION OF transactions
-    FOR VALUES FROM ('2025-08-01') TO ('2025-09-01');
+CREATE TABLE IF NOT EXISTS transactions_2026_08 PARTITION OF transactions
+    FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
 
 -- Default catch-all partition
 CREATE TABLE IF NOT EXISTS transactions_default PARTITION OF transactions DEFAULT;
@@ -68,6 +68,8 @@ CREATE INDEX IF NOT EXISTS idx_txn_fraudulent  ON transactions (is_fraudulent) W
 -- ============================================================
 -- AUDIT LOG TABLE
 -- ============================================================
+-- Note: transaction_id is a logical reference. A hard FK to a 
+-- composite PK partitioned table can cause lock contention at scale.
 CREATE TABLE IF NOT EXISTS audit_log (
     id           BIGSERIAL PRIMARY KEY,
     transaction_id UUID NOT NULL,
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_txn_id ON audit_log (transaction_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log (created_at DESC);
 
 -- ============================================================
 -- TRIGGER FUNCTION: Hard business-rule enforcement
@@ -92,10 +95,12 @@ DECLARE
     daily_total   NUMERIC(12, 2);
 BEGIN
     -- Check 1: Is the account suspended or closed?
+    -- Added FOR UPDATE to lock the account row to prevent race conditions during concurrent transactions
     SELECT status, daily_limit
     INTO acct_status, acct_limit
     FROM accounts
-    WHERE account_id = NEW.account_id;
+    WHERE account_id = NEW.account_id
+    FOR UPDATE;
 
     IF acct_status IN ('Suspended', 'Closed') THEN
         NEW.status := 'Declined';
@@ -105,7 +110,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Check 2: Exceeds single-transaction hard cap (₹5,00,000)?
+    -- Check 2: Exceeds single-transaction hard cap?
     IF NEW.amount > acct_limit THEN
         NEW.status := 'Declined';
         INSERT INTO audit_log (transaction_id, event_type, old_status, new_status, notes)
@@ -164,7 +169,8 @@ FOR EACH ROW EXECUTE FUNCTION log_status_change();
 -- ============================================================
 -- VIEW: Admin summary view
 -- ============================================================
-CREATE OR REPLACE VIEW vw_ledger_summary AS
+DROP VIEW IF EXISTS vw_ledger_summary;
+CREATE VIEW vw_ledger_summary AS
 SELECT
     DATE_TRUNC('hour', created_at)   AS hour,
     COUNT(*)                          AS total_transactions,
@@ -173,7 +179,7 @@ SELECT
     SUM(CASE WHEN status = 'Declined' THEN 1 ELSE 0 END)               AS declined_count,
     SUM(CASE WHEN status = 'Awaiting Verification' THEN 1 ELSE 0 END)  AS pending_mfa_count,
     SUM(CASE WHEN is_fraudulent = TRUE THEN 1 ELSE 0 END)              AS fraud_flagged_count,
-    ROUND(AVG(risk_score)::numeric, 4)                                  AS avg_risk_score
+    ROUND(AVG(risk_score)::numeric, 4)                                 AS avg_risk_score
 FROM transactions
 GROUP BY DATE_TRUNC('hour', created_at)
 ORDER BY hour DESC;

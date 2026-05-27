@@ -5,8 +5,8 @@ services:
     image: postgres:16-alpine
     container_name: fraud_postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-frauddb}
-      POSTGRES_USER: ${POSTGRES_USER:-frauduser}
+      POSTGRES_DB:       ${POSTGRES_DB:-frauddb}
+      POSTGRES_USER:     ${POSTGRES_USER:-frauduser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fraudpass}
     ports:
       - "5432:5432"
@@ -14,10 +14,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-frauduser}"]
+      test:     ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-frauduser}"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout:  5s
+      retries:  5
 
   redis:
     image: redis:7-alpine
@@ -29,21 +29,25 @@ services:
       - ./docker/redis.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:     ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout:  5s
+      retries:  5
 
   backend:
     build:
-      context: ./backend
+      context:    ./backend
       dockerfile: Dockerfile
     container_name: fraud_backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-frauduser}:${POSTGRES_PASSWORD:-fraudpass}@postgres:5432/${POSTGRES_DB:-frauddb}
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-changeme-in-production}
-      ENV: ${ENV:-development}
+      DATABASE_URL:    postgresql+asyncpg://${POSTGRES_USER:-frauduser}:${POSTGRES_PASSWORD:-fraudpass}@postgres:5432/${POSTGRES_DB:-frauddb}
+      REDIS_URL:       redis://redis:6379/0
+      SECRET_KEY:      ${SECRET_KEY:-changeme-in-production}
+      ENV:             ${ENV:-development}
+      # FIX: ALLOWED_ORIGINS must include the Streamlit service URL.
+      # Without this the CORS middleware (which replaced allow_origins=["*"])
+      # blocks every request from the Streamlit frontend.
+      ALLOWED_ORIGINS: "http://streamlit:8501,http://localhost:8501"
     ports:
       - "8000:8000"
     depends_on:
@@ -57,10 +61,11 @@ services:
 
   streamlit:
     build:
-      context: ./streamlit_app
+      context:    ./streamlit_app
       dockerfile: Dockerfile
     container_name: fraud_streamlit
     environment:
+      # FIX: app.py now reads this via os.getenv("API_URL") so Docker routing works
       API_URL: http://backend:8000
     ports:
       - "8501:8501"
