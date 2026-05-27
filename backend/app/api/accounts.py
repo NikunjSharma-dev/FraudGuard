@@ -19,6 +19,13 @@ class SignupRequest(BaseModel):
 
 @router.post("/signup")
 async def create_account(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Provision a new customer account.
+
+    Generates a unique `ACC#####` account ID and inserts the customer record
+    into the `accounts` table. The returned `account_id` is required for
+    all subsequent `/transaction/submit` calls.
+    """
     try:
         # 1. Generate unique Account ID
         unique_number = random.randint(10000, 99999)

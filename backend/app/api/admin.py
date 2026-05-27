@@ -11,9 +11,14 @@ from app.models.database import get_db, TransactionORM
 from app.models.schemas import LedgerSummaryResponse, TransactionDetail
 from app.services.ledger_service import LedgerService
 
+from fastapi import APIRouter
+
+
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,7 +33,12 @@ class AccountStatusUpdate(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 @router.get("/ledger-summary", response_model=LedgerSummaryResponse)
 async def get_ledger_summary(db: AsyncSession = Depends(get_db)):
-    """Aggregated ledger stats used by the dashboard."""
+    """
+Aggregated ledger stats — total volume, fraud count, throughput (TPS),
+status breakdown, and the 20 most recent transactions.
+
+Polled by the Streamlit dashboard every few seconds.
+"""
     query = text("""
         SELECT
             SUM(total_volume)        AS total_volume,
@@ -74,7 +84,11 @@ async def get_recent_transactions(
     limit: int = Query(default=50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
-    """Paginated recent transactions, newest first — powers the ledger table."""
+    """
+Paginated transaction list, newest first.
+
+Use the `limit` query parameter (1–500, default 50) to control page size.
+"""
     rows = (
         await db.execute(
             select(TransactionORM).order_by(TransactionORM.created_at.desc()).limit(limit)
@@ -89,9 +103,11 @@ async def get_recent_transactions(
 @router.get("/volume-trend")
 async def get_volume_trend(db: AsyncSession = Depends(get_db)):
     """
-    Hourly transaction volume + fraud count for the last 24 hours.
-    Replaces the fake [x**2 for x in range(24)] data from the original.
-    """
+Hourly transaction volume and fraud count for the last 24 hours.
+
+Returns a list of 24 objects: `{ hour, total, fraud_count }`.
+Used by the volume trend chart on the dashboard.
+"""
     return await LedgerService.get_volume_trend(db)
 
 
@@ -103,7 +119,14 @@ async def get_audit_log(
     limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    """Most recent status-change audit events — compliance & debugging."""
+    """
+Recent status-change audit events from the `audit_log` table.
+
+Each event records: `transaction_id`, `event_type`, `old_status`,
+`new_status`, `notes`, and `created_at`.
+
+Use `limit` (1–200, default 50) to control how many rows are returned.
+"""
     rows = (await db.execute(text(f"""
         SELECT id, transaction_id, event_type, old_status, new_status, notes, created_at
         FROM audit_log
@@ -122,9 +145,10 @@ async def get_all_accounts(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Fetch all customer accounts with optional search by account_id or name.
-    Parameterized query in LedgerService prevents SQL injection.
-    """
+List all customer accounts.
+
+Pass `?search=ACC12345` or `?search=nikunj` to filter by account ID or name.
+"""
     return await LedgerService.get_all_accounts(db, search=search)
 
 
@@ -137,8 +161,17 @@ async def update_account_status(
     payload: AccountStatusUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Block or unblock a customer account."""
+    """
+Update an account's status.
+
+Valid values for `status`: `Active`, `Suspended`, `Blocked`.
+Suspended accounts are rejected by the PostgreSQL trigger on the next transaction attempt.
+"""
     found = await LedgerService.update_account_status(db, account_id, payload.status)
     if not found:
         raise HTTPException(status_code=404, detail=f"Account {account_id} not found.")
     return {"message": f"Account {account_id} is now {payload.status}."}
+
+@router.get("/some-endpoint")
+async def some_function():
+    return {"message": "Success"}

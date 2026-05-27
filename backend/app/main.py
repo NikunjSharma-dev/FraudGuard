@@ -10,12 +10,16 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.api import transactions, admin, accounts     # accounts was unused before
 from app.models.database import init_db, create_next_month_partition
+
+from app.api.admin import router as admin_router
+from app.api.accounts import router as accounts_router
 
 try:
     from app.services.fraud_service import FraudService, get_redis
@@ -25,6 +29,12 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+app = FastAPI(title="FraudGuard API")
+
+
+app.include_router(admin_router)
+app.include_router(accounts_router)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Rate Limiter
@@ -73,10 +83,34 @@ async def lifespan(app: FastAPI):
 # ─────────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="FraudGuard",
-    description="Transaction processing with PostgreSQL ledger and ML fraud detection.",
+    description="""
+## FraudGuard API
+
+Transaction processing with a dual-layer fraud detection pipeline.
+
+### How it works
+1. **PostgreSQL trigger** — hard rules fire on every insert (suspended accounts, daily limits, blocked regions)
+2. **ML engine** — Isolation Forest + XGBoost scores behavioral features from Redis; high-risk transactions trigger step-up MFA
+
+### Authentication
+No auth required for this demo. Set `SECRET_KEY` in `.env` before any real deployment.
+
+### Rate limiting
+`POST /transaction/submit` is limited to **10 requests/minute per IP**. Exceeding it returns `HTTP 429`.
+""",
     version="2.0.0",
+    contact={
+        "name": "Nikunj Sharma",
+        "url": "https://github.com/NikunjSharma-dev/fraud-detection-system",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
     lifespan=lifespan,
 )
+
+
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -111,3 +145,10 @@ async def health_check():
         "version":          "2.0.0",
         "ml_engine_active": HAS_FRAUD_SERVICE,
     }
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirects the empty home page to the Swagger documentation."""
+    return RedirectResponse(url="/docs")
+
+

@@ -35,7 +35,20 @@ async def submit_transaction(
     payload: TransactionSubmitRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit a transaction for fraud evaluation."""
+    """
+Submit a transaction for real-time fraud evaluation.
+
+**Flow:**
+1. Checks for an existing pending MFA challenge on this account (security lock)
+2. Inserts into PostgreSQL — the DB trigger runs hard rules immediately
+3. ML engine scores the transaction (Isolation Forest → XGBoost)
+4. Returns `Approved`, `Declined`, or `Awaiting Verification`
+
+If `Awaiting Verification` is returned, an OTP is generated and printed to
+the backend terminal. Use `PATCH /{transaction_id}/verify` to complete MFA.
+
+**Rate limited:** 10 requests/minute per IP.
+"""
     try:
         # ── Anti-brute-force: recover any existing pending MFA challenge ──────
         pending_query = select(TransactionORM).where(
@@ -117,9 +130,12 @@ async def verify_mfa(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Validate a 6-digit OTP and approve/decline the pending transaction.
-    Uses PATCH (correct REST semantics — partial update of an existing resource).
-    """
+Validate a 6-digit OTP to resolve a pending transaction.
+
+- Valid OTP → status set to `Verified`
+- Invalid or expired OTP → status set to `Declined`
+- OTPs expire after **5 minutes**. Use `POST /{transaction_id}/resend-otp` to get a fresh one.
+"""
     try:
         query = select(TransactionORM).where(TransactionORM.id == uuid.UUID(transaction_id))
         result = await db.execute(query)
@@ -159,9 +175,14 @@ async def verify_mfa(
 @router.get("/{transaction_id}/explain", tags=["Transactions"])
 async def explain_transaction(transaction_id: str, db: AsyncSession = Depends(get_db)):
     """
-    Return SHAP feature attributions for a completed transaction.
-    Useful for auditing ML decisions and regulatory explainability.
-    """
+Return SHAP feature attributions for a transaction.
+
+Surfaces the six behavioral features the ML engine used:
+`geo_velocity`, `time_since_last_tx`, `tx_count_10m`,
+`amount_z_score`, `hour_of_day`, `is_weekend`.
+
+Useful for auditing ML decisions and satisfying explainability requirements.
+"""
     try:
         query = select(TransactionORM).where(TransactionORM.id == uuid.UUID(transaction_id))
         result = await db.execute(query)
@@ -180,7 +201,12 @@ async def explain_transaction(transaction_id: str, db: AsyncSession = Depends(ge
     
 @router.post("/{transaction_id}/resend-otp", tags=["Transactions"])
 async def resend_otp(transaction_id: str, db: AsyncSession = Depends(get_db)):
-    """Generates a fresh OTP and resets the 5-minute Redis timer."""
+    """
+Generate a new OTP and reset the 5-minute expiry window.
+
+The previous OTP is immediately invalidated. The new code is printed
+to the backend terminal (demo mode).
+"""
     try:
         query = select(TransactionORM).where(TransactionORM.id == uuid.UUID(transaction_id))
         result = await db.execute(query)
