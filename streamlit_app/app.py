@@ -568,3 +568,21 @@ elif page == "⚙️ System Health":
     ml_status = st.progress(0, text="Loading Scikit/XGBoost Models...")
     time.sleep(0.3)
     ml_status.progress(100, text="ML engine: models loaded")
+
+# =============================================================================
+# FOOTER
+# =============================================================================
+st.divider()
+st.markdown(
+    """
+    <div style="text-align: center; color: #888; font-size: 13px; padding: 8px 0 4px 0;">
+        Built by <strong>Nikunj Sharma</strong> &nbsp;·&nbsp; Roll No. 230107046 &nbsp;·&nbsp; IIT Guwahati &nbsp;·&nbsp;
+        <a href="https://github.com/NikunjSharma-dev/fraud-detection-system/tree/main"
+           target="_blank" style="color: #888; text-decoration: underline;">
+            github.com/NikunjSharma-dev
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
