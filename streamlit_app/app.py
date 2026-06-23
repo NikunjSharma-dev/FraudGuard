@@ -50,15 +50,33 @@ def _api_points_to_localhost(url: str) -> bool:
     return host in {"localhost", "127.0.0.1", "0.0.0.0"}
 
 
+@st.cache_data(ttl=30)
+def _probe_backend_health(url: str) -> tuple[bool, str]:
+    try:
+        response = requests.get(f"{url}/health", timeout=2)
+        if response.ok:
+            return True, response.text
+        return False, f"HTTP {response.status_code}"
+    except requests.RequestException as exc:
+        return False, str(exc)
+
+
 # API Configuration
 API_URL = _get_api_url().rstrip("/")  # set API_URL in Streamlit secrets or environment for non-local deployments
 API_IS_LOCALHOST = _api_points_to_localhost(API_URL)
+API_ONLINE, API_HEALTH_DETAIL = _probe_backend_health(API_URL)
 
-if API_IS_LOCALHOST:
-    st.info(
-        "API_URL is set to a local address. This works for local development only. "
-        "For Streamlit Cloud, set a public backend URL in secrets, e.g. "
-        "API_URL=https://your-backend.example.com"
+if API_ONLINE:
+    st.success(f"Connected to FastAPI backend at {API_URL}")
+elif API_IS_LOCALHOST:
+    st.error(
+        "FastAPI backend is not reachable at localhost:8000. Start the backend service "
+        "and refresh this page."
+    )
+else:
+    st.warning(
+        "FastAPI backend is not reachable at the configured API_URL. Set a public backend "
+        "URL in Streamlit secrets or environment variables."
     )
 
 # -----------------------------------------------------------------------------

@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
 
 
+def _empty_ledger_summary() -> LedgerSummaryResponse:
+    return LedgerSummaryResponse(
+        total_volume=0.0,
+        fraud_count=0,
+        throughput=0.0,
+        transactions=[],
+        status_breakdown={"Approved": 0, "Declined": 0, "Awaiting Verification": 0},
+    )
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Inline schema (used only in this router)
@@ -39,41 +49,39 @@ status breakdown, and the 20 most recent transactions.
 
 Polled by the Streamlit dashboard every few seconds.
 """
-    query = text("""
-        SELECT
-            SUM(total_volume)        AS total_volume,
-            SUM(fraud_flagged_count) AS fraud_count,
-            SUM(approved_count)      AS approved,
-            SUM(declined_count)      AS declined,
-            SUM(pending_mfa_count)   AS pending
-        FROM vw_ledger_summary;
-    """)
-    row = (await db.execute(query)).fetchone()
+    try:
+        query = text("""
+            SELECT
+                SUM(total_volume)        AS total_volume,
+                SUM(fraud_flagged_count) AS fraud_count,
+                SUM(approved_count)      AS approved,
+                SUM(declined_count)      AS declined,
+                SUM(pending_mfa_count)   AS pending
+            FROM vw_ledger_summary;
+        """)
+        row = (await db.execute(query)).fetchone()
 
-    if not row or row[0] is None:
+        if not row or row[0] is None:
+            return _empty_ledger_summary()
+
+        # Real TPS from LedgerService
+        summary = await LedgerService.get_ledger_summary(db)
+        recent_txns = await LedgerService.get_recent_transactions(db, limit=20)
+
         return LedgerSummaryResponse(
-            total_volume=0.0, fraud_count=0, throughput=0.0,
-            transactions=[],
-            status_breakdown={"Approved": 0, "Declined": 0, "Awaiting Verification": 0},
+            total_volume=float(row.total_volume or 0),
+            fraud_count=int(row.fraud_count or 0),
+            throughput=summary["throughput"],
+            transactions=recent_txns,
+            status_breakdown={
+                "Approved":              int(row.approved or 0),
+                "Declined":              int(row.declined or 0),
+                "Awaiting Verification": int(row.pending or 0),
+            },
         )
-
-    # Real TPS from LedgerService
-    summary = await LedgerService.get_ledger_summary(db)
-
-
-    recent_txns = await LedgerService.get_recent_transactions(db, limit=20)
-
-    return LedgerSummaryResponse(
-        total_volume=float(row.total_volume or 0),
-        fraud_count=int(row.fraud_count or 0),
-        throughput=summary["throughput"],         # Real TPS
-        transactions=recent_txns,                 # Real list of dicts
-        status_breakdown={
-            "Approved":              int(row.approved or 0),
-            "Declined":              int(row.declined or 0),
-            "Awaiting Verification": int(row.pending or 0),
-        },
-    )
+    except Exception as exc:
+        logger.warning("Ledger summary unavailable, returning empty response: %s", exc)
+        return _empty_ledger_summary()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -89,12 +97,16 @@ Paginated transaction list, newest first.
 
 Use the `limit` query parameter (1–500, default 50) to control page size.
 """
-    rows = (
-        await db.execute(
-            select(TransactionORM).order_by(TransactionORM.created_at.desc()).limit(limit)
-        )
-    ).scalars().all()
-    return [TransactionDetail.model_validate(r) for r in rows]
+    try:
+        rows = (
+            await db.execute(
+                select(TransactionORM).order_by(TransactionORM.created_at.desc()).limit(limit)
+            )
+        ).scalars().all()
+        return [TransactionDetail.model_validate(r) for r in rows]
+    except Exception as exc:
+        logger.warning("Recent transactions unavailable, returning empty list: %s", exc)
+        return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +120,11 @@ Hourly transaction volume and fraud count for the last 24 hours.
 Returns a list of 24 objects: `{ hour, total, fraud_count }`.
 Used by the volume trend chart on the dashboard.
 """
-    return await LedgerService.get_volume_trend(db)
+    try:
+        return await LedgerService.get_volume_trend(db)
+    except Exception as exc:
+        logger.warning("Volume trend unavailable, returning empty list: %s", exc)
+        return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -127,13 +143,17 @@ Each event records: `transaction_id`, `event_type`, `old_status`,
 
 Use `limit` (1–200, default 50) to control how many rows are returned.
 """
-    rows = (await db.execute(text(f"""
-        SELECT id, transaction_id, event_type, old_status, new_status, notes, created_at
-        FROM audit_log
-        ORDER BY created_at DESC
-        LIMIT {limit}
-    """))).fetchall()
-    return [dict(r._mapping) for r in rows]
+    try:
+        rows = (await db.execute(text(f"""
+            SELECT id, transaction_id, event_type, old_status, new_status, notes, created_at
+            FROM audit_log
+            ORDER BY created_at DESC
+            LIMIT {limit}
+        """))).fetchall()
+        return [dict(r._mapping) for r in rows]
+    except Exception as exc:
+        logger.warning("Audit log unavailable, returning empty list: %s", exc)
+        return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -149,7 +169,11 @@ List all customer accounts.
 
 Pass `?search=ACC12345` or `?search=nikunj` to filter by account ID or name.
 """
-    return await LedgerService.get_all_accounts(db, search=search)
+    try:
+        return await LedgerService.get_all_accounts(db, search=search)
+    except Exception as exc:
+        logger.warning("Accounts unavailable, returning empty list: %s", exc)
+        return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,10 +191,16 @@ Update an account's status.
 Valid values for `status`: `Active`, `Suspended`, `Blocked`.
 Suspended accounts are rejected by the PostgreSQL trigger on the next transaction attempt.
 """
-    found = await LedgerService.update_account_status(db, account_id, payload.status)
-    if not found:
-        raise HTTPException(status_code=404, detail=f"Account {account_id} not found.")
-    return {"message": f"Account {account_id} is now {payload.status}."}
+    try:
+        found = await LedgerService.update_account_status(db, account_id, payload.status)
+        if not found:
+            raise HTTPException(status_code=404, detail=f"Account {account_id} not found.")
+        return {"message": f"Account {account_id} is now {payload.status}."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Account status update unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Account status updates are unavailable right now.")
 
 @router.get("/some-endpoint")
 async def some_function():
