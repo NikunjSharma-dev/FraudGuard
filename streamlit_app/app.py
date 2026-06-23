@@ -34,8 +34,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+def _get_api_url() -> str:
+    try:
+        return st.secrets.get("API_URL", os.getenv("API_URL", "http://localhost:8000"))
+    except Exception:
+        return os.getenv("API_URL", "http://localhost:8000")
+
+
 # API Configuration
-API_URL = os.getenv("API_URL", "http://localhost:8000")  # set API_URL in .env for non-local deployments
+API_URL = _get_api_url()  # set API_URL in Streamlit secrets or environment for non-local deployments
 
 # -----------------------------------------------------------------------------
 # Sidebar Navigation

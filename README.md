@@ -132,6 +132,19 @@ Services after startup:
 | PostgreSQL          | http://localhost:5432         |
 | Redis               | http://localhost:6379         |
 
+## Streamlit Cloud deployment
+
+To publish the dashboard on Streamlit Community Cloud, deploy the repository with `streamlit_app/app.py` as the main file and use the repo-root `requirements.txt` for dependencies.
+
+Set the backend URL in Streamlit secrets or app environment variables:
+
+```toml
+# .streamlit/secrets.toml
+API_URL = "https://your-public-backend.example.com"
+```
+
+The dashboard can still render mock metrics when the backend is offline, but the onboarding and transaction flows require a reachable FastAPI backend.
+
 ---
 
 ## API
