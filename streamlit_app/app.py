@@ -6,6 +6,7 @@ import numpy as np
 import plotly.express as px
 from datetime import datetime
 import time
+from urllib.parse import urlparse
 
 # -----------------------------------------------------------------------------
 # Configuration & Theming
@@ -41,8 +42,24 @@ def _get_api_url() -> str:
         return os.getenv("API_URL", "http://localhost:8000")
 
 
+def _api_points_to_localhost(url: str) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return False
+    return host in {"localhost", "127.0.0.1", "0.0.0.0"}
+
+
 # API Configuration
-API_URL = _get_api_url()  # set API_URL in Streamlit secrets or environment for non-local deployments
+API_URL = _get_api_url().rstrip("/")  # set API_URL in Streamlit secrets or environment for non-local deployments
+API_IS_LOCALHOST = _api_points_to_localhost(API_URL)
+
+if API_IS_LOCALHOST:
+    st.info(
+        "API_URL is set to a local address. This works for local development only. "
+        "For Streamlit Cloud, set a public backend URL in secrets, e.g. "
+        "API_URL=https://your-backend.example.com"
+    )
 
 # -----------------------------------------------------------------------------
 # Sidebar Navigation
@@ -174,7 +191,13 @@ elif page == "📝 Open Account":
                     else:
                         st.error("❌ Failed to create account. Check backend logs.")
                 except requests.exceptions.ConnectionError:
-                    st.error("🚨 Connection Refused: Ensure FastAPI backend is running.")
+                    if API_IS_LOCALHOST:
+                        st.error(
+                            "🚨 Connection Refused: API_URL points to localhost. "
+                            "If deployed on Streamlit Cloud, set API_URL to your public backend URL."
+                        )
+                    else:
+                        st.error("🚨 Connection Refused: Ensure FastAPI backend is running.")
 
 # =============================================================================
 # PAGE 3: SIMULATE TRANSACTION
@@ -243,7 +266,14 @@ elif page == "💳 Simulate Transaction":
                                 st.markdown(f"- **{feature}**: {direction} risk by `{abs(impact):.3f}`")
                     else: st.error(f"HTTP Error: {res.status_code}\n{res.text}")
                 except requests.exceptions.ConnectionError:
-                    st.error("🚨 Connection Refused: Ensure FastAPI backend is running.", icon="🔌")
+                    if API_IS_LOCALHOST:
+                        st.error(
+                            "🚨 Connection Refused: API_URL points to localhost. "
+                            "If deployed on Streamlit Cloud, set API_URL to your public backend URL.",
+                            icon="🔌"
+                        )
+                    else:
+                        st.error("🚨 Connection Refused: Ensure FastAPI backend is running.", icon="🔌")
         
         elif st.session_state.pending_mfa_tx:
             if submit_otp:
