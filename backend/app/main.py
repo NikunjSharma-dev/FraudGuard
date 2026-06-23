@@ -30,6 +30,12 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+app = FastAPI(title="FraudGuard API")
+
+
+app.include_router(admin_router)
+app.include_router(accounts_router)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Rate Limiter
 # ─────────────────────────────────────────────────────────────────────────────
@@ -112,18 +118,14 @@ No auth required for this demo. Set `SECRET_KEY` in `.env` before any real deplo
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS: prefer env var, but keep a safe local default so the API can start
-# in a fresh dev environment without crashing on import.
+# CORS: read from env var — never hardcode allow_origins=["*"] in production
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS")
 if not allowed_origins_raw:
-    allowed_origins_raw = (
-        "http://localhost:8501,"
-        "http://127.0.0.1:8501,"
-        "http://localhost:3000,"
-        "http://127.0.0.1:3000"
+    raise RuntimeError(
+        "ALLOWED_ORIGINS environment variable is not set. "
+        "Set it to a comma-separated list of allowed frontend origins."
     )
-    logger.warning("ALLOWED_ORIGINS not set; using local development defaults.")
-allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+allowed_origins = allowed_origins_raw.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
