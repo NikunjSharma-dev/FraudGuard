@@ -42,7 +42,10 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing PostgreSQL connection pool…")
-    await init_db()
+    try:
+        await init_db()
+    except Exception as e:
+        logger.warning(f"PostgreSQL unavailable at startup: {e}")
 
     try:
         await create_next_month_partition()
