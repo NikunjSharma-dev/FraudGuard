@@ -28,6 +28,11 @@ router = APIRouter(prefix="/transaction", tags=["Transactions"])
 limiter = Limiter(key_func=get_remote_address)
 # --------------------------
 
+
+def _is_db_connection_failure(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "connection refused" in message or "could not connect to server" in message
+
 @router.post("/submit", response_model=TransactionResponse)
 @limiter.limit("10/minute") # <--- THE MISSING DECORATOR!
 async def submit_transaction(
@@ -118,8 +123,16 @@ the backend terminal. Use `PATCH /{transaction_id}/verify` to complete MFA.
         )
 
     except Exception as e:
-        await db.rollback()
+        try:
+            await db.rollback()
+        except Exception:
+            pass
         logger.error(f"Transaction processing failed: {e}", exc_info=True)
+        if _is_db_connection_failure(e):
+            raise HTTPException(
+                status_code=503,
+                detail="Transaction processing unavailable because the database is offline.",
+            )
         raise HTTPException(status_code=500, detail=f"Transaction processing failed: {str(e)}")
 
 

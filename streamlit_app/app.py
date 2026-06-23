@@ -282,6 +282,14 @@ elif page == "💳 Simulate Transaction":
                             for feature, impact in top_factors:
                                 direction = "🔴 Increased" if impact > 0 else "🟢 Decreased"
                                 st.markdown(f"- **{feature}**: {direction} risk by `{abs(impact):.3f}`")
+                    elif res.status_code == 503:
+                        detail = data.get("detail") if isinstance(data, dict) else None
+                        st.error(
+                            "⚠️ Backend is online, but the transaction database is unavailable. "
+                            "Start PostgreSQL and try again."
+                            + (f"\n\n{detail}" if detail else ""),
+                            icon="🔌",
+                        )
                     else: st.error(f"HTTP Error: {res.status_code}\n{res.text}")
                 except requests.exceptions.ConnectionError:
                     if API_IS_LOCALHOST:
