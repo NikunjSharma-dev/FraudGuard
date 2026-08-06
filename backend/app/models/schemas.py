@@ -12,10 +12,12 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 class TransactionSubmitRequest(BaseModel):
     """Payload for submitting a new transaction."""
-    account_id: str   = Field(..., description="Unique account identifier")
-    amount:     float = Field(..., gt=0, description="Transaction amount in INR")
-    lat:        float = Field(..., ge=-90, le=90,     description="Merchant latitude")
-    lon:        float = Field(..., ge=-180, le=180,   description="Merchant longitude")
+    account_id:        str            = Field(..., description="Unique account identifier")
+    amount:            float          = Field(..., gt=0, description="Transaction amount")
+    lat:               float          = Field(..., ge=-90, le=90,     description="Merchant latitude")
+    lon:               float          = Field(..., ge=-180, le=180,   description="Merchant longitude")
+    merchant_category: Optional[str]  = Field(default="General", description="Category e.g. CryptoExchange, Supermarket")
+    device_id:         Optional[str]  = Field(default=None, description="Device fingerprint or ID")
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -24,6 +26,8 @@ class TransactionSubmitRequest(BaseModel):
                 "amount": 5000.00,
                 "lat": 19.0760,
                 "lon": 72.8777,
+                "merchant_category": "CryptoExchange",
+                "device_id": "untrusted_device_99"
             }
         }
     )
@@ -51,6 +55,15 @@ class OTPVerifyRequest(BaseModel):
     )
 
 
+class EngineConfigRequest(BaseModel):
+    """Payload for live ML Engine parameter configuration."""
+    xgb_weight:       Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    iso_bump:         Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    mfa_threshold:    Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    block_threshold:  Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    sensitivity_mode: Optional[str]   = Field(default=None)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # RESPONSE SCHEMAS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -62,6 +75,7 @@ class TransactionResponse(BaseModel):
     risk_score:     Optional[float]            = None
     message:        Optional[str]              = None
     explanation:    Optional[Dict[str, float]] = None  # SHAP feature attributions
+    risk_reasons:   Optional[List[str]]        = None  # Human-readable risk factors
 
 
 class TransactionDetail(BaseModel):
@@ -101,3 +115,4 @@ class HealthResponse(BaseModel):
     service:          str
     version:          str
     ml_engine_active: bool
+

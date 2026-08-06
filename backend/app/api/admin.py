@@ -187,9 +187,7 @@ async def update_account_status(
 ):
     """
 Update an account's status.
-
 Valid values for `status`: `Active`, `Suspended`, `Blocked`.
-Suspended accounts are rejected by the PostgreSQL trigger on the next transaction attempt.
 """
     try:
         found = await LedgerService.update_account_status(db, account_id, payload.status)
@@ -202,6 +200,57 @@ Suspended accounts are rejected by the PostgreSQL trigger on the next transactio
         logger.warning("Account status update unavailable: %s", exc)
         raise HTTPException(status_code=503, detail="Account status updates are unavailable right now.")
 
-@router.get("/some-endpoint")
-async def some_function():
-    return {"message": "Success"}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET & POST /admin/config — Live ML Engine Tuning
+# ─────────────────────────────────────────────────────────────────────────────
+from app.ml.predict import ENGINE_CONFIG, FraudPredictor
+from app.models.schemas import EngineConfigRequest
+
+@router.get("/config")
+async def get_engine_config():
+    """Get active ML Engine weights and threshold parameters."""
+    return {
+        "status": "success",
+        "config": ENGINE_CONFIG,
+        "feature_columns": FraudPredictor._feature_columns or []
+    }
+
+
+@router.post("/config")
+async def update_engine_config(payload: EngineConfigRequest):
+    """Update active ML Engine weights and threshold parameters in real time."""
+    if payload.xgb_weight is not None:
+        ENGINE_CONFIG["xgb_weight"] = payload.xgb_weight
+    if payload.iso_bump is not None:
+        ENGINE_CONFIG["iso_bump"] = payload.iso_bump
+    if payload.mfa_threshold is not None:
+        ENGINE_CONFIG["mfa_threshold"] = payload.mfa_threshold
+    if payload.block_threshold is not None:
+        ENGINE_CONFIG["block_threshold"] = payload.block_threshold
+    if payload.sensitivity_mode is not None:
+        ENGINE_CONFIG["sensitivity_mode"] = payload.sensitivity_mode
+
+    return {
+        "status": "success",
+        "message": "ML Engine parameters updated in real-time.",
+        "config": ENGINE_CONFIG
+    }
+
+
+@router.post("/retrain")
+async def retrain_ml_engine():
+    """Trigger background model retraining pipeline."""
+    try:
+        import subprocess
+        import sys
+        res = subprocess.run([sys.executable, "app/ml/train.py"], capture_output=True, text=True)
+        if res.returncode == 0:
+            FraudPredictor._iso_forest = None
+            FraudPredictor.load()
+            return {"status": "success", "message": "ML models retrained and reloaded successfully!"}
+        else:
+            raise HTTPException(status_code=500, detail=f"Training failed: {res.stderr}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Retraining error: {str(e)}")
+

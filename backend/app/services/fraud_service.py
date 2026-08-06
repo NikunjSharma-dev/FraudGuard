@@ -1,12 +1,8 @@
 """
-FraudService — async orchestrator for ML inference, Redis feature store, and OTP.
+FraudService — Async orchestrator for ML inference, Redis/In-Memory feature store, and OTP.
 
-FraudService owns all async I/O (Redis reads/writes, geo-velocity, OTP).
+Owns all async I/O (Redis reads/writes, geo-velocity, OTP).
 CPU-bound inference is delegated to FraudPredictor via run_in_executor.
-
-  FraudService  →  FraudPredictor.predict()
-                     StandardScaler → IsolationForest → XGBoost → SHAP
-                     returns FraudPrediction dataclass
 """
 import os
 import asyncio
@@ -15,6 +11,7 @@ import json
 import logging
 from datetime import datetime
 from math import radians, cos, sin, asin, sqrt
+from typing import Optional, Tuple, Dict, Any, List
 
 import pandas as pd
 import redis.asyncio as aioredis
@@ -24,32 +21,67 @@ from app.ml.predict import FraudPredictor, FraudPrediction
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Redis client (singleton, lazy-init)
+# In-Memory Cache Fallback (When Redis server is offline)
 # ─────────────────────────────────────────────────────────────────────────────
-_redis_client: aioredis.Redis | None = None
+class InMemoryCache:
+    """Async in-memory fallback mimicking Redis API when Redis is offline."""
+    def __init__(self):
+        self._store: Dict[str, str] = {}
+        self._ttl: Dict[str, float] = {}
 
+    async def get(self, key: str) -> Optional[str]:
+        if key in self._ttl and datetime.now().timestamp() > self._ttl[key]:
+            self._store.pop(key, None)
+            self._ttl.pop(key, None)
+            return None
+        return self._store.get(key)
 
-def get_redis() -> aioredis.Redis:
-    """Return (or create) the module-level async Redis client."""
+    async def setex(self, key: str, time_sec: int, value: str) -> None:
+        self._store[key] = value
+        self._ttl[key] = datetime.now().timestamp() + time_sec
+
+    async def incr(self, key: str) -> int:
+        val = int(await self.get(key) or 0) + 1
+        self._store[key] = str(val)
+        return val
+
+    async def expire(self, key: str, time_sec: int) -> None:
+        self._ttl[key] = datetime.now().timestamp() + time_sec
+
+    async def delete(self, key: str) -> None:
+        self._store.pop(key, None)
+        self._ttl.pop(key, None)
+
+    async def ping(self) -> bool:
+        return True
+
+_redis_client = None
+_in_memory_fallback = InMemoryCache()
+
+def get_redis():
+    """Return async Redis client or in-memory fallback gracefully."""
     global _redis_client
-    if _redis_client is None:
-        redis_url = os.getenv("REDIS_URL")
-        if not redis_url:
-            raise RuntimeError(
-                "REDIS_URL environment variable is not set. "
-                "Set it in your .env file before starting the server."
-            )
-        _redis_client = aioredis.from_url(
+    if _redis_client is not None:
+        return _redis_client
+
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if not redis_url or "${{" in redis_url or "secrets." in redis_url:
+        redis_url = "redis://localhost:6379/0"
+
+    try:
+        client = aioredis.from_url(
             redis_url,
             encoding="utf-8",
             decode_responses=True,
+            socket_timeout=1.5,
         )
-    return _redis_client
+        _redis_client = client
+        return _redis_client
+    except Exception as e:
+        logger.warning(f"Redis connection init failed ({e}). Using in-memory cache fallback.")
+        return _in_memory_fallback
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: Haversine distance (km)
-# ─────────────────────────────────────────────────────────────────────────────
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371.0
     dlat = radians(lat2 - lat1)
@@ -58,39 +90,46 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * R * asin(sqrt(max(a, 0.0)))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FraudService
-# ─────────────────────────────────────────────────────────────────────────────
 class FraudService:
     """
-    Single public interface used by the transactions API.
-    All ML work is delegated to FraudPredictor; this class owns async I/O only.
+    Single public interface used by transactions API.
+    Delegates ML scoring to FraudPredictor.
     """
-
     _models_loaded: bool = False
-
-    # ── Model Loading ─────────────────────────────────────────────────────────
 
     @classmethod
     def load_models(cls) -> None:
-        """
-        Load ML artifacts via FraudPredictor (single source of truth).
-        Safe to call multiple times.
-        """
         if cls._models_loaded:
             return
-        FraudPredictor.load()
-        cls._models_loaded = FraudPredictor.is_loaded()
-        logger.info("ML models loaded.")
+        try:
+            FraudPredictor.load()
+            cls._models_loaded = FraudPredictor.is_loaded()
+            logger.info("ML models loaded.")
+        except Exception as e:
+            logger.warning(f"FraudPredictor model load warning: {e}")
 
-    # ── Redis: Behavioral Context ─────────────────────────────────────────────
+    @classmethod
+    async def _safe_get_cache(cls):
+        global _redis_client
+        r = get_redis()
+        if r is _in_memory_fallback:
+            return _in_memory_fallback
+        try:
+            await r.ping()
+            return r
+        except Exception:
+            logger.warning("Redis ping failed. Switching to in-memory feature cache fallback.")
+            _redis_client = _in_memory_fallback
+            return _in_memory_fallback
 
     @classmethod
     async def _read_account_context(cls, account_id: str) -> dict:
-        """Fetch stored behavioral context for an account from Redis."""
-        r = get_redis()
-        raw = await r.get(f"ctx:{account_id}")
-        return json.loads(raw) if raw else {}
+        try:
+            r = await cls._safe_get_cache()
+            raw = await r.get(f"ctx:{account_id}")
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
 
     @classmethod
     async def _write_account_context(
@@ -101,42 +140,46 @@ class FraudService:
         lon: float,
         prev_ctx: dict,
     ) -> None:
-        """
-        Update behavioral context after a transaction is processed.
-        Uses exponential moving average (α=0.15) for amount stats.
-        7-day TTL — inactive accounts auto-expire.
-        """
-        r = get_redis()
-        prev_avg = prev_ctx.get("amount_avg", amount)
-        prev_std = prev_ctx.get("amount_std", 0.0)
+        try:
+            r = await cls._safe_get_cache()
+            prev_avg = prev_ctx.get("amount_avg", amount)
+            prev_std = prev_ctx.get("amount_std", 0.0)
 
-        alpha   = 0.15
-        new_avg = alpha * amount + (1 - alpha) * prev_avg
-        new_std = max(alpha * abs(amount - prev_avg) + (1 - alpha) * prev_std, 1.0)
+            alpha   = 0.15
+            new_avg = alpha * amount + (1 - alpha) * prev_avg
+            new_std = max(alpha * abs(amount - prev_avg) + (1 - alpha) * prev_std, 1.0)
 
-        ctx = {
-            "last_lat":   lat,
-            "last_lon":   lon,
-            "last_tx_ts": datetime.now().timestamp(),
-            "amount_avg": round(new_avg, 4),
-            "amount_std": round(new_std, 4),
-        }
-        await r.setex(f"ctx:{account_id}", 604_800, json.dumps(ctx))
+            ctx = {
+                "last_lat":   lat,
+                "last_lon":   lon,
+                "last_tx_ts": datetime.now().timestamp(),
+                "amount_avg": round(new_avg, 4),
+                "amount_std": round(new_std, 4),
+            }
+            await r.setex(f"ctx:{account_id}", 604_800, json.dumps(ctx))
+        except Exception as e:
+            logger.warning(f"Account context write skipped: {e}")
+
 
     @classmethod
-    async def _get_tx_count_10m(cls, account_id: str) -> int:
-        """
-        Increment and return the transaction count for the last 10 minutes.
-        Uses Redis INCR + per-key TTL so the window resets automatically.
-        """
-        r   = get_redis()
-        key = f"txcount10m:{account_id}"
-        count = await r.incr(key)
-        if count == 1:
-            await r.expire(key, 600)   # Set TTL only on first increment
-        return int(count)
+    async def _get_tx_counts(cls, account_id: str) -> Tuple[int, int]:
+        try:
+            r = await cls._safe_get_cache()
+            key_10m = f"txcount10m:{account_id}"
+            key_1h  = f"txcount1h:{account_id}"
 
-    # ── Feature Engineering ───────────────────────────────────────────────────
+            c_10m = await r.incr(key_10m)
+            if c_10m == 1:
+                await r.expire(key_10m, 600)
+
+            c_1h = await r.incr(key_1h)
+            if c_1h == 1:
+                await r.expire(key_1h, 3600)
+
+            return int(c_10m), int(c_1h)
+        except Exception:
+            return 1, 1
+
 
     @classmethod
     async def _build_features(
@@ -145,55 +188,66 @@ class FraudService:
         amount: float,
         lat: float,
         lon: float,
-    ) -> tuple[pd.DataFrame, dict]:
-        """
-        Build the feature vector from live Redis context.
-        Returns (feature_df, prev_ctx) — prev_ctx is needed to update Redis afterward.
+        merchant_category: str = "General",
+        device_id: Optional[str] = None,
+    ) -> Tuple[pd.DataFrame, dict]:
+        ctx = await cls._read_account_context(account_id)
+        tx_count_10m, tx_count_1h = await cls._get_tx_counts(account_id)
+        now = datetime.now()
 
-        Feature set:
-          amount            — transaction value
-          geo_velocity      — km/h between last known location and current
-          tx_count_10m      — transaction frequency in last 10 min (Redis INCR)
-          hour_of_day       — 0-23 (captures unusual-hour fraud patterns)
-          is_weekend        — 0/1 (Saturday=5, Sunday=6)
-          amount_z_score    — std deviations from this account's EMA average
-          time_since_last_tx— seconds since last transaction (velocity signal)
-
-        Safety net: any column required by the pre-trained model but absent from
-        the computed dict is filled with 0.0 — prevents runtime crashes if the
-        model was trained with extra features.
-        """
-        ctx          = await cls._read_account_context(account_id)
-        tx_count_10m = await cls._get_tx_count_10m(account_id)
-        now          = datetime.now()
-
-        # ── Geo velocity ──────────────────────────────────────────────────────
+        # Geo velocity & distance
         geo_velocity       = 0.0
-        time_since_last_tx = 86_400.0   # Default 24 h for first-time accounts
+        time_since_last_tx = 86_400.0
+        home_lat, home_lon = 40.7128, -74.0060 # Default NYC home
 
         if ctx.get("last_lat") is not None and ctx.get("last_tx_ts") is not None:
             dist_km            = _haversine_km(ctx["last_lat"], ctx["last_lon"], lat, lon)
             elapsed_sec        = max(now.timestamp() - ctx["last_tx_ts"], 1.0)
             elapsed_hr         = elapsed_sec / 3600.0
-            geo_velocity       = min(dist_km / elapsed_hr, 2000.0)   # Capped at ~Mach speed
+            geo_velocity       = min(dist_km / elapsed_hr, 5000.0)
             time_since_last_tx = elapsed_sec
 
-        # ── Amount z-score ────────────────────────────────────────────────────
+        distance_from_home = _haversine_km(home_lat, home_lon, lat, lon)
+
+        # Amount z-score
         acct_avg       = ctx.get("amount_avg", amount)
         acct_std       = max(ctx.get("amount_std", 1.0), 1.0)
         amount_z_score = (amount - acct_avg) / acct_std
 
+        # Merchant risk score
+        cat_map = {
+            "CryptoExchange": 0.95,
+            "Offshore Mule": 0.98,
+            "Casino / Gambling": 0.85,
+            "Digital Assets": 0.75,
+            "Electronics": 0.40,
+            "Supermarket": 0.05,
+            "General": 0.15
+        }
+        merchant_risk = cat_map.get(merchant_category, 0.20)
+
+        # Device trust score
+        device_trust = 0.35 if (device_id and "untrusted" in device_id.lower()) else 0.90
+        if geo_velocity > 400:
+            device_trust = min(device_trust, 0.25)
+
+        is_night = 1 if (now.hour >= 23 or now.hour <= 5) else 0
+
         features = {
-            "amount":             amount,
-            "geo_velocity":       round(geo_velocity, 4),
-            "tx_count_10m":       tx_count_10m,
-            "hour_of_day":        now.hour,
-            "is_weekend":         int(now.weekday() >= 5),
-            "amount_z_score":     round(amount_z_score, 4),
-            "time_since_last_tx": round(time_since_last_tx, 4),
+            "amount":              amount,
+            "geo_velocity":        round(geo_velocity, 4),
+            "tx_count_10m":        tx_count_10m,
+            "tx_count_1h":         tx_count_1h,
+            "hour_of_day":         now.hour,
+            "is_weekend":          int(now.weekday() >= 5),
+            "is_night_tx":         is_night,
+            "amount_z_score":      round(amount_z_score, 4),
+            "time_since_last_tx":  round(time_since_last_tx, 4),
+            "merchant_risk_score": merchant_risk,
+            "device_trust_score":  device_trust,
+            "distance_from_home":  round(distance_from_home, 2),
         }
 
-        # Safety net: fill any unknown training columns with 0.0
         feature_cols = FraudPredictor._feature_columns or list(features.keys())
         for col in feature_cols:
             features.setdefault(col, 0.0)
@@ -201,17 +255,9 @@ class FraudService:
         df = pd.DataFrame([features])[feature_cols]
         return df, ctx
 
-    # ── ML Inference (sync, runs in executor) ─────────────────────────────────
-
     @classmethod
     def _run_inference(cls, df: pd.DataFrame) -> FraudPrediction:
-        """
-        Synchronous wrapper around FraudPredictor.predict().
-        Called via run_in_executor so it never blocks the event loop.
-        """
         return FraudPredictor.predict(df)
-
-    # ── Public: Evaluate Transaction ──────────────────────────────────────────
 
     @classmethod
     async def evaluate_transaction(
@@ -220,60 +266,47 @@ class FraudService:
         amount: float,
         lat: float,
         lon: float,
-    ) -> tuple[float, str, dict]:
+        merchant_category: str = "General",
+        device_id: Optional[str] = None,
+    ) -> Tuple[float, str, dict, List[str]]:
         """
-        Full async pipeline:
-          1. Read account context from Redis
-          2. Build feature DataFrame
-          3. Run CPU-bound ML inference in a thread pool
-          4. Fire-and-forget Redis context update
-
-        Returns: (risk_score, action, explanation)
+        Full async evaluation pipeline.
+        Returns: (risk_score, action, explanation, risk_reasons)
         """
         if not cls._models_loaded:
-            logger.warning("Models not loaded — defaulting to Approved.")
-            return 0.0, "Approved", {}
+            cls.load_models()
 
-        feature_df, prev_ctx = await cls._build_features(account_id, amount, lat, lon)
+        feature_df, prev_ctx = await cls._build_features(
+            account_id, amount, lat, lon, merchant_category, device_id
+        )
 
-        loop    = asyncio.get_event_loop()
+        loop = asyncio.get_event_loop()
         result: FraudPrediction = await loop.run_in_executor(
             None, cls._run_inference, feature_df
         )
 
-        # Non-blocking Redis update (failures here don't affect the response)
         asyncio.create_task(
             cls._write_account_context(account_id, amount, lat, lon, prev_ctx)
         )
 
-        return result.risk_score, result.action, result.explanation
-
-    # ── OTP Management ────────────────────────────────────────────────────────
+        return result.risk_score, result.action, result.explanation, result.risk_reasons
 
     @classmethod
     async def generate_otp(cls, transaction_id: str) -> str:
-        """
-        Generate a 6-digit OTP using secrets.
-        Stored in Redis with a 5-minute TTL.
-        In production: deliver via Twilio SMS.
-        """
-        otp = str(secrets.randbelow(900_000) + 100_000)   # Always 6 digits
-        await get_redis().setex(f"otp:{transaction_id}", 300, otp)
-        logger.info(f"🔑 OTP issued for transaction {transaction_id}")
+        otp = str(secrets.randbelow(900_000) + 100_000)
+        r = await cls._safe_get_cache()
+        await r.setex(f"otp:{transaction_id}", 300, otp)
+        logger.info(f"🔑 OTP issued for transaction {transaction_id}: {otp}")
         return otp
 
     @classmethod
     async def verify_otp(cls, transaction_id: str, submitted: str) -> bool:
-        """
-        Validate submitted OTP against Redis.
-        Single-use: key is deleted immediately on success.
-        Returns False for wrong code or expired token.
-        """
-        r      = get_redis()
+        r = await cls._safe_get_cache()
         stored = await r.get(f"otp:{transaction_id}")
         if not stored:
             return False
-        if stored == submitted:
+        if stored.strip() == submitted.strip():
             await r.delete(f"otp:{transaction_id}")
             return True
         return False
+

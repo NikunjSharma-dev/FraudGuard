@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FraudGuard - Polished Dashboard</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN for pixel-perfect charts matching screenshot -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    :root {
+      --bg-canvas: #D4E6E3;
+      --bg-canvas-gradient: linear-gradient(135deg, #CDE1DD 0%, #DBEEE9 100%);
+      --sidebar-bg: #21222E;
+      --sidebar-active: #FF7B62;
+      --header-dark: #21222E;
+      --card-bg: #FFFFFF;
+      --text-dark: #21222E;
+      --text-muted: #6B7C78;
+      --text-light: #94A5A1;
+      --coral-accent: #FF7B62;
+      --coral-light: #FFDCD4;
+      --green-accent: #27AE60;
+      --green-pastel: #9FE3B7;
+      --border-subtle: #E2ECE9;
+      --search-bg: #E8F2F0;
+
+      --font-heading: 'Space Grotesk', -apple-system, sans-serif;
+      --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-canvas-gradient);
+      color: var(--text-dark);
+      min-height: 100vh;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      overflow-x: hidden;
+    }
+
+    .app-container {
+      display: flex;
+      width: 100%;
+      max-width: 1380px;
+      min-height: calc(100vh - 48px);
+      background: var(--sidebar-bg);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(22, 45, 38, 0.12), 0 4px 16px rgba(0,0,0,0.06);
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 96px;
+      background: var(--sidebar-bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 0 20px 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+      flex-shrink: 0;
+    }
+
+    .sidebar-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--text-dark);
+      border: 2px solid rgba(255,255,255,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--coral-accent);
+      font-weight: 800;
+      font-family: var(--font-heading);
+      font-size: 20px;
+      margin-bottom: 36px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: transform 0.2s ease;
+    }
+
+    .sidebar-logo:hover {
+      transform: scale(1.06);
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      width: 100%;
+      align-items: center;
+    }
+
+    .nav-item {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--coral-accent);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .nav-item svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 123, 98, 0.12);
+      transform: translateY(-2px);
+    }
+
+    .nav-item.active {
+      background: rgba(255, 123, 98, 0.18);
+      color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(255, 123, 98, 0.25);
+    }
+
+    .nav-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: var(--coral-accent);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--sidebar-bg);
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 12px;
+      font-family: var(--font-heading);
+      font-weight: 700;
+    }
+
+    /* MAIN VIEWPORT */
+    .main-viewport {
+      flex: 1;
+      background: var(--card-bg);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 32px 18px 32px;
+      background: #FFFFFF;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-heading);
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: var(--text-dark);
+      text-transform: uppercase;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--text-dark);
+      color: var(--coral-accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 15px;
+    }
+
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-dark);
+      letter-spacing: 0.5px;
+      font-family: var(--font-heading);
+    }
+
+    .breadcrumb svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+    }
+
+    .top-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: var(--search-bg);
+      border-radius: 30px;
+      padding: 8px 16px;
+      width: 240px;
+    }
+
+    .search-input {
+      border: none;
+      background: transparent;
+      outline: none;
+      width: 100%;
+      padding-left: 10px;
+      font-size: 13px;
+      color: var(--text-dark);
+      font-family: var(--font-body);
+    }
+
+    .top-action-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1px solid var(--border-subtle);
+      background: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dark);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .top-action-btn:hover {
+      background: var(--search-bg);
+    }
+
+    .action-count {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      background: var(--coral-accent);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 10px;
+      border: 2px solid #FFFFFF;
+    }
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-left: 8px;
+      cursor: pointer;
+    }
+
+    .user-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--coral-accent);
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      box-shadow: 0 4px 10px rgba(255, 123, 98, 0.3);
+    }
+
+    .user-name {
+      font-size: 13px;
+      font-weight: 800;
+      font-family: var(--font-heading);
+      letter-spacing: 0.5px;
+      color: var(--text-dark);
+      text-transform: uppercase;
+    }
+
+    /* CONTENT BODY */
+    .dashboard-content {
+      padding: 28px 32px;
+      background: #F7FAF9;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* STAT CARDS */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+
+    .stat-card {
+      background: #FFFFFF;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    .stat-card-header {
+      background: var(--header-dark);
+      color: #FFFFFF;
+      padding: 12px 18px;
+      font-family: var(--font-heading);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .stat-card-body {
+      padding: 20px 18px 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .stat-value-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stat-number {
+      font-family: var(--font-heading);
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text-dark);
+      letter-spacing: -0.5px;
+    }
+
+    .stat-icon-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .badge-dark { background: var(--header-dark); color: #FFFFFF; }
+    .badge-green { background: var(--green-pastel); color: #1A5E35; }
+    .badge-coral { background: var(--coral-light); color: var(--coral-accent); }
+
+    .stat-subtext {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .text-positive { color: #27AE60; }
+    .text-negative { color: #E74C3C; }
+
+    /* DASHBOARD MAIN GRID */
+    .dashboard-main-grid {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 20px;
+    }
+
+    .left-widgets {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .mini-card {
+      background: #FFFFFF;
+      border-radius: 14px;
+      padding: 18px;
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    }
+
+    .mini-card-info h4 {
+      font-family: var(--font-heading);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--text-dark);
+      line-height: 1.2;
+    }
+
+    .mini-card-icon {
+      font-size: 24px;
+    }
+
+    .updates-card {
+      background: #FFFFFF;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 250px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+    }
+
+    .updates-header {
+      background: var(--coral-accent);
+      height: 48px;
+      width: 100%;
+    }
+
+    .updates-body {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      text-align: center;
+      gap: 16px;
+    }
+
+    .updates-circle-btn {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: var(--header-dark);
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+      box-shadow: 0 6px 18px rgba(33, 34, 46, 0.25);
+    }
+
+    .updates-circle-btn:hover {
+      transform: scale(1.08);
+    }
+
+    .updates-title {
+      font-family: var(--font-heading);
+      font-size: 15px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dark);
+    }
+
+    .right-charts {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .chart-card {
+      background: #FFFFFF;
+      border-radius: 14px;
+      padding: 20px 24px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+    }
+
+    .chart-title {
+      font-family: var(--font-heading);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dark);
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .bar-chart-card {
+      background: #FFFFFF;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+    }
+
+    .bar-chart-header {
+      background: var(--header-dark);
+      color: #FFFFFF;
+      padding: 14px 24px;
+      font-family: var(--font-heading);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .bar-chart-canvas-wrapper {
+      background: var(--green-pastel);
+      padding: 24px;
+      height: 220px;
+    }
+
+    /* VIEWS & TABLES */
+    .view-panel {
+      display: none;
+    }
+
+    .view-panel.active {
+      display: block;
+    }
+
+    .view-card {
+      background: #FFFFFF;
+      border-radius: 16px;
+      padding: 28px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+    }
+
+    .view-title {
+      font-family: var(--font-heading);
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-dark);
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .custom-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-top: 16px;
+    }
+
+    .custom-table th {
+      background: var(--header-dark);
+      color: #FFFFFF;
+      font-family: var(--font-heading);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 14px 18px;
+      text-align: left;
+    }
+
+    .custom-table td {
+      padding: 14px 18px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .badge-approved { background: #E8F8F0; color: #1A5E35; }
+    .badge-flagged { background: #FEF0EE; color: #D9381E; }
+    .badge-pending { background: #FEF8E7; color: #B7791F; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-logo" onclick="switchTab('home')">L</div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" id="nav-home" onclick="switchTab('home')" title="Dashboard Overview">
+          <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+        </button>
+
+        <button class="nav-item" id="nav-ledger" onclick="switchTab('ledger')" title="Transaction Ledger">
+          <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          <span class="nav-badge">2</span>
+        </button>
+
+        <button class="nav-item" id="nav-simulate" onclick="switchTab('simulate')" title="Simulate Transaction">
+          <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+        </button>
+
+        <button class="nav-item" id="nav-analytics" onclick="switchTab('analytics')" title="ML Analytics">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+        </button>
+      </nav>
+      <div class="sidebar-footer">2026</div>
+    </aside>
+
+    <!-- MAIN VIEWPORT -->
+    <main class="main-viewport">
+      <!-- TOP BAR -->
+      <header class="top-bar">
+        <div class="brand-header">
+          <div class="brand-title">
+            <span class="brand-icon">L</span>
+            LOGOTYPE
+          </div>
+          <div class="breadcrumb">
+            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+            <span>HOME</span>
+            <span style="color: var(--text-light)">&gt;</span>
+            <span id="breadcrumb-title">DASHBOARD</span>
+          </div>
+        </div>
+
+        <div class="top-bar-right">
+          <div class="search-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#789090" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" class="search-input" placeholder="Search...">
+          </div>
+
+          <button class="top-action-btn" onclick="switchTab('ledger')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            <span class="action-count">10</span>
+          </button>
+
+          <button class="top-action-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          </button>
+
+          <div class="user-profile">
+            <div class="user-avatar">B</div>
+            <span class="user-name">BETHANY SPARKS</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- DASHBOARD BODY -->
+      <div class="dashboard-content">
+        <!-- HOME VIEW (SCREENSHOT EXACT MATCH) -->
+        <div id="view-home" class="view-panel active">
+          <!-- 4 STAT CARDS -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-card-header">TOTAL TRAFFIC</div>
+              <div class="stat-card-body">
+                <div class="stat-value-row">
+                  <span class="stat-number">325,456</span>
+                  <div class="stat-icon-badge badge-dark">↗</div>
+                </div>
+                <div class="stat-subtext text-positive">+5% SINCE LAST MONTH</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-card-header">NEW USERS</div>
+              <div class="stat-card-body">
+                <div class="stat-value-row">
+                  <span class="stat-number">3,006</span>
+                  <div class="stat-icon-badge badge-green">↘</div>
+                </div>
+                <div class="stat-subtext text-negative">-4.54% SINCE LAST MONTH</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-card-header">PERFORMANCE</div>
+              <div class="stat-card-body">
+                <div class="stat-value-row">
+                  <span class="stat-number">60%</span>
+                  <div class="stat-icon-badge badge-coral">📊</div>
+                </div>
+                <div class="stat-subtext text-positive">+2.54% SINCE LAST MONTH</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-card-header">SALES</div>
+              <div class="stat-card-body">
+                <div class="stat-value-row">
+                  <span class="stat-number">852</span>
+                  <div class="stat-icon-badge badge-dark">$</div>
+                </div>
+                <div class="stat-subtext text-positive">+6.54% SINCE LAST MONTH</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MAIN LAYOUT GRID -->
+          <div class="dashboard-main-grid" style="margin-top: 20px;">
+            <!-- LEFT WIDGETS -->
+            <div class="left-widgets">
+              <div class="mini-card">
+                <div class="mini-card-info">
+                  <h4>HEALTH CARE</h4>
+                </div>
+                <span class="mini-card-icon" style="color: var(--coral-accent)">❤️</span>
+              </div>
+
+              <div class="mini-card">
+                <div class="mini-card-info">
+                  <h4>WEATHER UPDATES</h4>
+                </div>
+                <span class="mini-card-icon" style="color: var(--green-pastel)">☁️</span>
+              </div>
+
+              <div class="updates-card">
+                <div class="updates-header"></div>
+                <div class="updates-body">
+                  <div class="updates-circle-btn" onclick="switchTab('simulate')">↓</div>
+                  <span class="updates-title">UPDATES</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT CHARTS -->
+            <div class="right-charts">
+              <!-- LINE CHART -->
+              <div class="chart-card">
+                <span class="chart-title">PERCENTAGE</span>
+                <div style="height: 180px; width: 100%;">
+                  <canvas id="lineChartCanvas"></canvas>
+                </div>
+              </div>
+
+              <!-- BAR CHART -->
+              <div class="bar-chart-card">
+                <div class="bar-chart-header">TOTAL ORDERS</div>
+                <div class="bar-chart-canvas-wrapper">
+                  <canvas id="barChartCanvas"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TRANSACTION LEDGER VIEW -->
+        <div id="view-ledger" class="view-panel">
+          <div class="view-card">
+            <h2 class="view-title">TRANSACTION AUDIT LEDGER</h2>
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>TX ID</th>
+                  <th>ACCOUNT</th>
+                  <th>AMOUNT</th>
+                  <th>LOCATION</th>
+                  <th>RISK SCORE</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>TX-9082</td>
+                  <td>ACC-4491 (Bethany Sparks)</td>
+                  <td>$12,450.00</td>
+                  <td>Tokyo, JP</td>
+                  <td style="color: #e74c3c; font-weight: 800">89 / 100</td>
+                  <td><span class="status-badge badge-flagged">FLAGGED</span></td>
+                </tr>
+                <tr>
+                  <td>TX-9081</td>
+                  <td>ACC-1204 (Marcus Vance)</td>
+                  <td>$45.20</td>
+                  <td>New York, US</td>
+                  <td style="color: #27ae60; font-weight: 800">4 / 100</td>
+                  <td><span class="status-badge badge-approved">APPROVED</span></td>
+                </tr>
+                <tr>
+                  <td>TX-9080</td>
+                  <td>ACC-8812 (Elena Rostova)</td>
+                  <td>$9,800.00</td>
+                  <td>London, UK</td>
+                  <td style="color: #f39c12; font-weight: 800">74 / 100</td>
+                  <td><span class="status-badge badge-pending">AWAITING OTP</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SIMULATE VIEW -->
+        <div id="view-simulate" class="view-panel">
+          <div class="view-card">
+            <h2 class="view-title">SIMULATE FRAUD SCORING</h2>
+            <p style="margin-bottom: 20px; color: var(--text-muted)">
+              Run test transaction payloads through FraudGuard's Dual-Layer Isolation Forest + XGBoost scoring engine.
+            </p>
+            <button class="updates-circle-btn" style="width: auto; height: auto; padding: 12px 24px; border-radius: 10px; font-size: 14px;" onclick="alert('Evaluating payload...')">
+              RUN TEST PAYLOAD
+            </button>
+          </div>
+        </div>
+
+        <!-- ANALYTICS VIEW -->
+        <div id="view-analytics" class="view-panel">
+          <div class="view-card">
+            <h2 class="view-title">MODEL ANALYTICS & SHAP</h2>
+            <p style="color: var(--text-muted)">Isolation Forest Anomaly Thresholds & Feature Importance Breakdown.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Tab switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
+      
+      const navBtn = document.getElementById('nav-' + tabId);
+      if (navBtn) navBtn.classList.add('active');
+
+      const panel = document.getElementById('view-' + tabId);
+      if (panel) panel.classList.add('active');
+
+      document.getElementById('breadcrumb-title').innerText = tabId.toUpperCase();
+    }
+
+    // Render Charts
+    window.addEventListener('DOMContentLoaded', () => {
+      // Line Chart
+      const ctxLine = document.getElementById('lineChartCanvas').getContext('2d');
+      new Chart(ctxLine, {
+        type: 'line',
+        data: {
+          labels: ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%'],
+          datasets: [{
+            data: [38, 52, 45, 48, 30, 68, 42, 54, 46, 72],
+            borderColor: '#21222E',
+            borderWidth: 2,
+            pointBackgroundColor: '#FF7B62',
+            pointRadius: 4,
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false } },
+            y: { min: 10, max: 100, grid: { color: '#E2ECE9' } }
+          }
+        }
+      });
+
+      // Bar Chart
+      const ctxBar = document.getElementById('barChartCanvas').getContext('2d');
+      new Chart(ctxBar, {
+        type: 'bar',
+        data: {
+          labels: ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'],
+          datasets: [{
+            data: [200, 360, 500, 420, 750, 740, 920, 900, 430, 810, 510, 760],
+            backgroundColor: '#21222E',
+            barThickness: 12
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false } },
+            y: { grid: { display: 'rgba(255,255,255,0.2)' }, ticks: { color: '#21222E' } }
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>

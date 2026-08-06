@@ -84,11 +84,13 @@ the backend terminal. Use `PATCH /{transaction_id}/verify` to complete MFA.
             )
 
         # ── Step 2: ML inference (async — runs in thread pool internally) ─────
-        risk_score, ml_status, explanation = await FraudService.evaluate_transaction(
+        risk_score, ml_status, explanation, risk_reasons = await FraudService.evaluate_transaction(
             account_id=payload.account_id,
             amount=payload.amount,
             lat=payload.lat,
             lon=payload.lon,
+            merchant_category=payload.merchant_category or "General",
+            device_id=payload.device_id,
         )
 
         # ── Step 3: Generate OTP if MFA is triggered ──────────────────────────
@@ -96,7 +98,6 @@ the backend terminal. Use `PATCH /{transaction_id}/verify` to complete MFA.
         if ml_status == "Awaiting Verification":
             generated_otp = await FraudService.generate_otp(str(new_tx.id))
             
-            # Massive print statement so you can't miss it in the terminal!
             print(f"\n{'='*50}")
             print(f"🚨 YOUR DEMO OTP IS: {generated_otp}")
             print(f"{'='*50}\n")
@@ -120,6 +121,7 @@ the backend terminal. Use `PATCH /{transaction_id}/verify` to complete MFA.
             risk_score=risk_score,
             message=message,
             explanation=explanation if explanation else None,
+            risk_reasons=risk_reasons if risk_reasons else None,
         )
 
     except Exception as e:
